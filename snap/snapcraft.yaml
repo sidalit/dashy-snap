@@ -1,0 +1,129 @@
+name: dashy
+base: core26
+version: '4.9.0'
+title: Dashy
+icon: snap/gui/dashy.png
+summary: Self-hosted dashboard for your homelab services and links
+description: |
+  Dashy is a self-hosted start page for your services and bookmarks. It
+  shows each item with an icon, its status and optional widgets, and
+  supports themes, multiple pages, search, keyboard shortcuts and an
+  in-browser config editor.
+
+  **Getting started**
+
+  The service starts right after installation and listens on
+  127.0.0.1:4000 (this machine only). Open http://localhost:4000.
+
+  The dashboard is configured in
+  /var/snap/dashy/common/user-data/conf.yml, which you can edit by hand
+  or from the web interface. Changes saved from the web interface are
+  backed up to /var/snap/dashy/common/user-data/config-backups.
+
+  To open it to your network:
+
+     sudo snap set dashy host=0.0.0.0
+
+  **Settings**
+
+     sudo snap set dashy port=4000 host=127.0.0.1
+     sudo snap set dashy http-auth=true
+
+  **Ping checks**
+
+  Status checks over HTTP work out of the box. Ping checks
+  (pingCheckEnabled) need raw ICMP sockets; to allow them, run:
+
+     sudo snap connect dashy:network-observe
+
+  **HTTPS**
+
+  Place dashy-pub.pem and dashy-priv.key in /var/snap/dashy/common/ssl and
+  restart the service. HTTPS is then served on port 4001 (ssl-port).
+license: MIT
+grade: stable
+confinement: strict
+website: https://dashy.to
+source-code:
+  - https://github.com/lissy93/dashy
+  - https://github.com/sidalit/dashy-snap
+issues:
+  - https://github.com/lissy93/dashy/issues
+  - https://github.com/sidalit/dashy-snap/issues
+contact: https://github.com/sidalit/dashy-snap/issues
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  dashy:
+    command: bin/dashy-launch
+    daemon: simple
+    restart-condition: on-failure
+    plugs:
+      - network
+      - network-bind
+      - network-observe
+
+parts:
+  # Upstream runs on Node 24 (node:24-alpine); ship the official runtime.
+  node:
+    plugin: nil
+    build-packages:
+      - curl
+      - xz-utils
+    override-build: |
+      version=24.22.2
+      case "$CRAFT_ARCH_BUILD_FOR" in
+        amd64) arch=x64 sum=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75 ;;
+        arm64) arch=arm64 sum=eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8 ;;
+        *) echo "unsupported architecture $CRAFT_ARCH_BUILD_FOR" >&2; exit 1 ;;
+      esac
+      tarball="node-v$version-linux-$arch.tar.xz"
+      curl -fsSLo "$tarball" "https://nodejs.org/dist/v$version/$tarball"
+      echo "$sum  $tarball" | sha256sum -c -
+      tar -xJf "$tarball" -C "$CRAFT_PART_INSTALL" --strip-components=1 --no-same-owner
+      install -Dm644 "$CRAFT_PART_INSTALL/LICENSE" "$CRAFT_PART_INSTALL/share/doc/node/LICENSE"
+    prime:
+      - bin/node
+      - share/doc/node
+
+  dashy:
+    after: [node]
+    plugin: nil
+    source: https://github.com/lissy93/dashy.git
+    source-tag: $SNAPCRAFT_PROJECT_VERSION
+    source-depth: 1
+    build-environment:
+      - NODE_OPTIONS: --max-old-space-size=4096
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+    stage-packages:
+      - iputils-ping
+    override-build: |
+      export PATH="$CRAFT_STAGE/bin:$PATH"
+      corepack yarn install --frozen-lockfile --network-timeout 600000
+      corepack yarn build
+      # Keep only the runtime dependencies, as upstream's Docker image does.
+      rm -rf node_modules
+      corepack yarn install --production --frozen-lockfile --network-timeout 600000
+
+      app="$CRAFT_PART_INSTALL/app"
+      mkdir -p "$app/src/utils/config" "$app/share"
+      cp -r dist public services node_modules server.js package.json "$app/"
+      cp src/utils/config/ConfigSchema.json "$app/src/utils/config/"
+      # Seeded into $SNAP_COMMON/user-data by the install hook.
+      install -Dm644 user-data/conf.yml "$app/share/conf.yml"
+      install -Dm644 LICENSE "$CRAFT_PART_INSTALL/share/doc/dashy/LICENSE"
+    prime:
+      - app
+      # Optional native modules for musl (Alpine) systems; never loaded here.
+      - -app/node_modules/*-musl
+      - -app/node_modules/@*/*-musl
+      - share/doc/dashy
+      - usr/bin/ping
+      - usr/share/doc/iputils-ping
+
+  scripts:
+    plugin: dump
+    source: snap/local

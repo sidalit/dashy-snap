@@ -1,0 +1,27 @@
+#!/bin/sh
+# Start the service with the settings from `snap set dashy ...`.
+set -eu
+
+# conf.yml, sub-page configs, custom icons and config backups live in
+# $SNAP_COMMON, shared by all revisions, so `snap revert` keeps edits.
+export USER_DATA_DIR="$SNAP_COMMON/user-data"
+if [ ! -f "$USER_DATA_DIR/conf.yml" ]; then
+  mkdir -p "$USER_DATA_DIR"
+  cp "$SNAP/app/share/conf.yml" "$USER_DATA_DIR/conf.yml"
+fi
+
+export NODE_ENV=production
+PORT="$(snapctl get port)"
+HOST="$(snapctl get host)"
+SSL_PORT="$(snapctl get ssl-port)"
+export PORT HOST SSL_PORT
+# HTTPS is enabled when both files exist.
+export SSL_PRIV_KEY_PATH="$SNAP_COMMON/ssl/dashy-priv.key"
+export SSL_PUB_KEY_PATH="$SNAP_COMMON/ssl/dashy-pub.pem"
+
+if [ "$(snapctl get http-auth)" = true ]; then
+  export ENABLE_HTTP_AUTH=true
+fi
+
+cd "$SNAP/app"
+exec "$SNAP/bin/node" server.js

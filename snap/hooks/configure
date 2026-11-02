@@ -1,0 +1,41 @@
+#!/bin/sh
+# Validate `snap set dashy ...` and restart the service so changes apply.
+set -eu
+
+for key in port ssl-port; do
+  value="$(snapctl get "$key")"
+  case "$value" in
+    '' | *[!0-9]*)
+      echo "$key must be a number" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
+    echo "$key must be between 1 and 65535" >&2
+    exit 1
+  fi
+done
+if [ "$(snapctl get port)" = "$(snapctl get ssl-port)" ]; then
+  echo "port and ssl-port must differ" >&2
+  exit 1
+fi
+
+case "$(snapctl get host)" in
+  '' | *[!0-9A-Za-z.:-]*)
+    echo "host must be an IP address or host name" >&2
+    exit 1
+    ;;
+esac
+
+case "$(snapctl get http-auth)" in
+  true | false) ;;
+  *)
+    echo "http-auth must be true or false" >&2
+    exit 1
+    ;;
+esac
+
+# Also restart an enabled service that is down, so fixing a bad value brings it back.
+if snapctl services "$SNAP_INSTANCE_NAME.dashy" | grep -qwE 'enabled|active'; then
+  snapctl restart "$SNAP_INSTANCE_NAME.dashy"
+fi
