@@ -1,11 +1,10 @@
 #!/bin/sh
-# Validate `snap set dashy ...` and restart the service so changes apply.
 set -eu
 
 for key in port ssl-port; do
   value="$(snapctl get "$key")"
   case "$value" in
-    '' | *[!0-9]*)
+    '' | *[!0-9]* | ??????*)
       echo "$key must be a number" >&2
       exit 1
       ;;
@@ -15,7 +14,7 @@ for key in port ssl-port; do
     exit 1
   fi
 done
-if [ "$(snapctl get port)" = "$(snapctl get ssl-port)" ]; then
+if [ "$(snapctl get port)" -eq "$(snapctl get ssl-port)" ]; then
   echo "port and ssl-port must differ" >&2
   exit 1
 fi

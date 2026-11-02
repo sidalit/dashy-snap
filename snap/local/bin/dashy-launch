@@ -1,9 +1,7 @@
 #!/bin/sh
-# Start the service with the settings from `snap set dashy ...`.
 set -eu
 
-# conf.yml, sub-page configs, custom icons and config backups live in
-# $SNAP_COMMON, shared by all revisions, so `snap revert` keeps edits.
+# Keep dashboard edits and backups across revisions.
 export USER_DATA_DIR="$SNAP_COMMON/user-data"
 if [ ! -f "$USER_DATA_DIR/conf.yml" ]; then
   mkdir -p "$USER_DATA_DIR"
@@ -15,7 +13,6 @@ PORT="$(snapctl get port)"
 HOST="$(snapctl get host)"
 SSL_PORT="$(snapctl get ssl-port)"
 export PORT HOST SSL_PORT
-# HTTPS is enabled when both files exist.
 export SSL_PRIV_KEY_PATH="$SNAP_COMMON/ssl/dashy-priv.key"
 export SSL_PUB_KEY_PATH="$SNAP_COMMON/ssl/dashy-pub.pem"
 
